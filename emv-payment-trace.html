@@ -1,0 +1,1326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EMV Payment Trace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0B0F14; --panel:#131A22; --panel2:#192029; --line:#28323F; --line-soft:#1E2731;
+    --ink:#EAE8E0; --dim:#95A1AE; --faint:#5C6975;
+    --clear:#E6A23C;   /* cleartext / exposed */
+    --enc:#43D6CC;     /* encrypted / sealed channel */
+    --secret:#F0588E;  /* secrets: PIN, keys, HSM */
+    --rf:#9D8CFF;      /* physical link */
+    --ok:#5CD16E; --bad:#FF6363;
+    --mono:'IBM Plex Mono', ui-monospace,'SF Mono',Menlo,monospace;
+    --disp:'Space Grotesk','Inter',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--disp);
+    -webkit-font-smoothing:antialiased;font-feature-settings:"tnum" 1;}
+  body{min-height:100vh}
+  .wrap{max-width:1180px;margin:0 auto;padding:18px 18px 60px}
+
+  /* ---------- header ---------- */
+  header.top{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;
+    border-bottom:1px solid var(--line);padding-bottom:14px;flex-wrap:wrap}
+  .brand{display:flex;flex-direction:column;gap:2px}
+  .brand .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.28em;
+    text-transform:uppercase;color:var(--faint)}
+  .brand h1{font-size:26px;font-weight:700;letter-spacing:-.01em;margin:0;line-height:1}
+  .brand h1 .tt{color:var(--enc)}
+  .tabs{display:flex;gap:2px;background:var(--panel);border:1px solid var(--line);
+    border-radius:9px;padding:3px}
+  .tab{font-family:var(--mono);font-size:12.5px;letter-spacing:.04em;color:var(--dim);
+    background:transparent;border:0;padding:8px 14px;border-radius:6px;cursor:pointer;
+    text-transform:uppercase}
+  .tab[aria-selected="true"]{background:var(--panel2);color:var(--ink);
+    box-shadow:inset 0 0 0 1px var(--line)}
+  .tab:hover{color:var(--ink)}
+
+  .view{display:none;margin-top:18px}
+  .view.active{display:block}
+
+  /* ---------- controls bar ---------- */
+  .bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 14px}
+  .sel-wrap{display:flex;flex-direction:column;gap:3px}
+  .sel-wrap label{font-family:var(--mono);font-size:10px;letter-spacing:.2em;
+    text-transform:uppercase;color:var(--faint)}
+  select.scn{font-family:var(--disp);font-size:14px;font-weight:600;color:var(--ink);
+    background:var(--panel2);border:1px solid var(--line);border-radius:7px;
+    padding:7px 30px 7px 11px;cursor:pointer;appearance:none;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 0l5 6 5-6z' fill='%2395A1AE'/></svg>");
+    background-repeat:no-repeat;background-position:right 11px center}
+  .spacer{flex:1}
+  .ctrls{display:flex;align-items:center;gap:6px}
+  button.ctl{font-family:var(--mono);font-size:13px;color:var(--ink);background:var(--panel2);
+    border:1px solid var(--line);border-radius:7px;width:38px;height:38px;cursor:pointer;
+    display:grid;place-items:center}
+  button.ctl:hover{border-color:var(--enc);color:var(--enc)}
+  button.ctl.play{width:auto;padding:0 16px;gap:7px;display:flex;align-items:center}
+  button.ctl:disabled{opacity:.35;cursor:not-allowed}
+  button.ctl:disabled:hover{border-color:var(--line);color:var(--ink)}
+  .speed{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;color:var(--faint)}
+  .speed input{accent-color:var(--enc);width:84px}
+
+  /* ---------- topology ---------- */
+  .topo{margin-top:16px;background:
+      radial-gradient(120% 140% at 50% -10%, #121a23 0%, var(--panel) 55%, #0e141b 100%);
+    border:1px solid var(--line);border-radius:12px;padding:8px 8px 4px;overflow:hidden}
+  svg.net{width:100%;height:auto;display:block}
+  .node-label{font-family:var(--mono);font-size:11px;fill:var(--dim);letter-spacing:.05em}
+  .node-sub{font-family:var(--mono);font-size:9px;fill:var(--faint);letter-spacing:.12em;text-transform:uppercase}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;padding:8px 10px 6px;
+    font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .legend i{width:9px;height:9px;border-radius:2px;display:inline-block}
+
+  /* ---------- main grid ---------- */
+  .grid{display:grid;grid-template-columns:300px 1fr;gap:16px;margin-top:16px}
+  @media(max-width:880px){.grid{grid-template-columns:1fr}}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px}
+  .panel .ph{display:flex;align-items:center;justify-content:space-between;
+    padding:12px 14px;border-bottom:1px solid var(--line-soft)}
+  .panel .ph h2{font-size:12px;font-family:var(--mono);letter-spacing:.18em;
+    text-transform:uppercase;color:var(--faint);margin:0;font-weight:600}
+  .ph .count{font-family:var(--mono);font-size:11px;color:var(--faint)}
+
+  /* ledger */
+  .ledger{max-height:520px;overflow:auto;padding:6px}
+  .step{display:grid;grid-template-columns:30px 1fr;gap:10px;padding:9px 9px;border-radius:8px;
+    cursor:pointer;align-items:start;border:1px solid transparent}
+  .step:hover{background:var(--panel2)}
+  .step .n{font-family:var(--mono);font-size:11px;color:var(--faint);padding-top:2px}
+  .step .t{font-size:13.5px;font-weight:500;line-height:1.25}
+  .step .lay{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--faint);margin-top:3px;display:flex;align-items:center;gap:6px}
+  .step .lay i{width:7px;height:7px;border-radius:50%;display:inline-block}
+  .step.cur{background:var(--panel2);border-color:var(--line)}
+  .step.cur .t{color:var(--ink)}
+  .step.done .n{color:var(--enc)}
+  .step.cur .n{color:var(--enc);font-weight:600}
+
+  /* inspector */
+  .insp{padding:14px 16px;min-height:480px}
+  .insp .crumb{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--faint);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .insp .crumb .arr{color:var(--line)}
+  .insp h3{font-size:19px;font-weight:600;margin:9px 0 4px;letter-spacing:-.01em}
+  .insp .desc{font-size:14px;color:var(--dim);line-height:1.55;max-width:60ch}
+  .badges{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0 14px}
+  .badge{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+    padding:4px 9px;border-radius:20px;border:1px solid var(--line);color:var(--dim);
+    display:inline-flex;align-items:center;gap:6px}
+  .badge i{width:7px;height:7px;border-radius:50%}
+
+  .sub{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--faint);margin:18px 0 8px;display:flex;align-items:center;gap:8px}
+  .sub::after{content:"";flex:1;height:1px;background:var(--line-soft)}
+
+  /* hex block */
+  .hex{font-family:var(--mono);font-size:13px;line-height:1.9;background:var(--panel2);
+    border:1px solid var(--line-soft);border-radius:9px;padding:11px 13px;word-break:break-all}
+  .hx{padding:1px 2px;border-radius:3px;cursor:default;transition:background .12s}
+  .hx.clear{color:var(--clear)} .hx.enc{color:var(--enc)} .hx.secret{color:var(--secret)}
+  .hx.struct{color:var(--dim)} .hx.data{color:var(--ink)}
+  .hx.hl{background:rgba(67,214,204,.16);outline:1px solid var(--enc)}
+  .annot{margin-top:9px;display:flex;flex-direction:column;gap:0}
+  .annot .row{display:grid;grid-template-columns:64px 1fr;gap:12px;padding:5px 4px;
+    border-top:1px solid var(--line-soft);font-size:12.5px;align-items:baseline}
+  .annot .row:first-child{border-top:0}
+  .annot .row .by{font-family:var(--mono);font-size:12px;color:var(--ink)}
+  .annot .row .lb{color:var(--dim)} .annot .row .lb b{color:var(--ink);font-weight:600}
+
+  /* iso table */
+  .iso-mti{font-family:var(--mono);display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px}
+  .iso-mti .m{background:var(--panel2);border:1px solid var(--line-soft);border-radius:8px;
+    padding:8px 12px}
+  .iso-mti .m .k{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+  .iso-mti .m .v{font-size:17px;color:var(--ink);margin-top:2px}
+  .bitmap{font-family:var(--mono);font-size:12px;background:var(--panel2);
+    border:1px solid var(--line-soft);border-radius:9px;padding:11px 13px;line-height:1.8}
+  .bitmap .bhex{color:var(--clear);font-size:14px;word-break:break-all}
+  .bitmap .bbin{color:var(--faint);font-size:10.5px;word-break:break-all;margin-top:5px;line-height:1.7}
+  .bitmap .on{color:var(--enc)}
+  .de{display:grid;grid-template-columns:42px 150px 1fr;gap:10px;padding:6px 4px;
+    border-top:1px solid var(--line-soft);font-size:12.5px;align-items:baseline}
+  .de:first-child{border-top:0}
+  .de .di{font-family:var(--mono);color:var(--faint)}
+  .de .dn{color:var(--dim)}
+  .de .dv{font-family:var(--mono);color:var(--ink);word-break:break-all}
+  .de .dv.clear{color:var(--clear)} .de .dv.enc{color:var(--enc)} .de .dv.secret{color:var(--secret)}
+
+  /* keymath */
+  .kchain{display:flex;flex-direction:column;gap:0}
+  .kstep{display:grid;grid-template-columns:1fr;gap:3px;padding:11px 13px;border-radius:9px;
+    background:var(--panel2);border:1px solid var(--line-soft);margin-bottom:8px;position:relative}
+  .kstep .kt{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--dim)}
+  .kstep .kt b{color:var(--ink)}
+  .kstep .kv{font-family:var(--mono);font-size:13px;color:var(--secret);word-break:break-all;margin-top:2px}
+  .kstep .kv.enc{color:var(--enc)} .kstep .kv.clear{color:var(--clear)}
+  .kstep .kop{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-top:3px}
+  .karrow{text-align:center;color:var(--faint);font-family:var(--mono);font-size:12px;
+    margin:-3px 0 5px}
+
+  .note{font-size:12.5px;color:var(--faint);line-height:1.6;border-left:2px solid var(--line);
+    padding:2px 0 2px 12px;margin-top:14px}
+  .note b{color:var(--dim)}
+
+  .verdict{margin-top:14px;border-radius:10px;padding:14px 16px;font-family:var(--mono);
+    display:flex;align-items:center;gap:12px;font-size:15px}
+  .verdict.ok{background:rgba(92,209,110,.08);border:1px solid rgba(92,209,110,.35);color:var(--ok)}
+  .verdict.bad{background:rgba(255,99,99,.08);border:1px solid rgba(255,99,99,.35);color:var(--bad)}
+  .verdict .big{font-size:22px;font-weight:600}
+
+  /* ---------- scenarios tab ---------- */
+  .scn-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
+  .scard{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;
+    cursor:pointer;display:flex;flex-direction:column;gap:9px;transition:border-color .14s,transform .14s}
+  .scard:hover{border-color:var(--enc);transform:translateY(-2px)}
+  .scard .stag{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--faint);display:flex;align-items:center;gap:7px}
+  .scard .stag i{width:8px;height:8px;border-radius:2px}
+  .scard h3{margin:0;font-size:17px;font-weight:600;letter-spacing:-.01em}
+  .scard p{margin:0;font-size:13px;color:var(--dim);line-height:1.5}
+  .scard .route{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:auto;
+    padding-top:6px;border-top:1px solid var(--line-soft)}
+  .scard .go{font-family:var(--mono);font-size:11.5px;color:var(--enc);letter-spacing:.06em}
+
+  /* ---------- reference tab ---------- */
+  .ref{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:880px){.ref{grid-template-columns:1fr}}
+  .refcard{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
+  .refcard h3{font-size:15px;margin:0 0 4px;letter-spacing:-.01em}
+  .refcard .lead{font-size:13px;color:var(--dim);line-height:1.6;margin-bottom:14px}
+  .gl{display:flex;flex-direction:column}
+  .gl .term{display:grid;grid-template-columns:96px 1fr;gap:12px;padding:9px 0;
+    border-top:1px solid var(--line-soft);font-size:13px;align-items:baseline}
+  .gl .term:first-child{border-top:0}
+  .gl .term .k{font-family:var(--mono);font-size:12px;color:var(--enc);font-weight:500}
+  .gl .term .d{color:var(--dim);line-height:1.5}
+  .gl .term .d b{color:var(--ink);font-weight:600}
+  .hier{font-family:var(--mono);font-size:12.5px;line-height:1.95;color:var(--dim)}
+  .hier .h-row{padding:2px 0}
+  .hier .h-row .arr{color:var(--faint)}
+  .hier .ka{color:var(--secret)} .hier .ke{color:var(--enc)} .hier .kc{color:var(--clear)}
+  .twocol-note{font-size:13px;color:var(--dim);line-height:1.65}
+  .twocol-note b{color:var(--ink)}
+  .twocol-note .tag-clear{color:var(--clear);font-family:var(--mono);font-size:12px}
+  .twocol-note .tag-enc{color:var(--enc);font-family:var(--mono);font-size:12px}
+  .twocol-note .tag-secret{color:var(--secret);font-family:var(--mono);font-size:12px}
+  .full{grid-column:1/-1}
+  a{color:var(--enc)}
+
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none!important;animation:none!important}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <div class="eyebrow">card · pos · switch · issuer · byte-level</div>
+      <h1>EMV Payment <span class="tt">Trace</span></h1>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true" data-view="sim">Simulation</button>
+      <button class="tab" role="tab" aria-selected="false" data-view="scn">Scenarios</button>
+      <button class="tab" role="tab" aria-selected="false" data-view="ref">Reference</button>
+    </div>
+  </header>
+
+  <!-- ================= SIMULATION ================= -->
+  <section class="view active" id="view-sim">
+    <div class="bar">
+      <div class="sel-wrap">
+        <label>Scenario</label>
+        <select class="scn" id="scnSelect"></select>
+      </div>
+      <div class="spacer"></div>
+      <div class="ctrls">
+        <button class="ctl" id="btnFirst" title="First step">⏮</button>
+        <button class="ctl" id="btnPrev" title="Previous">◀</button>
+        <button class="ctl play" id="btnPlay" title="Play / pause"><span id="playIcon">▶</span><span id="playTxt" style="font-size:12px">Play</span></button>
+        <button class="ctl" id="btnNext" title="Next">▶</button>
+        <div class="speed">
+          <span>slow</span><input type="range" id="speed" min="600" max="2600" value="1500" step="100"><span>fast</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="topo">
+      <svg class="net" viewBox="0 0 1000 220" id="net" aria-label="payment network topology"></svg>
+      <div class="legend">
+        <span><i style="background:var(--clear)"></i>cleartext</span>
+        <span><i style="background:var(--enc)"></i>encrypted / cryptogram</span>
+        <span><i style="background:var(--secret)"></i>secret · PIN · keys</span>
+        <span><i style="background:var(--rf)"></i>physical link</span>
+        <span><i style="background:var(--ok)"></i>approve</span>
+        <span><i style="background:var(--bad)"></i>decline</span>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="panel">
+        <div class="ph"><h2>Trace</h2><span class="count" id="ledgerCount"></span></div>
+        <div class="ledger" id="ledger"></div>
+      </div>
+      <div class="panel">
+        <div class="ph"><h2>Packet Inspector</h2><span class="count" id="inspLayer"></span></div>
+        <div class="insp" id="insp"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= SCENARIOS ================= -->
+  <section class="view" id="view-scn">
+    <div class="scn-grid" id="scnGrid"></div>
+  </section>
+
+  <!-- ================= REFERENCE ================= -->
+  <section class="view" id="view-ref">
+    <div class="ref">
+      <div class="refcard full">
+        <h3>Two cryptographic systems, not one</h3>
+        <div class="twocol-note">
+          The single most common confusion: the data protecting the card and the data protecting the PIN are
+          <b>different systems, different keys, different owners.</b> Keep them apart and everything else falls into place.
+          <div style="margin-top:12px">
+            <span class="tag-enc">EMV cryptogram (ARQC)</span> — generated <b>inside the chip</b> using the <b>issuer's</b> keys
+            (Issuer Master Key → card Unique Derived Key → per-transaction session key, indexed by the ATC counter).
+            It proves the card is genuine to the issuer. The terminal can only carry it, never read or forge it.
+          </div>
+          <div style="margin-top:10px">
+            <span class="tag-secret">DUKPT</span> — the <b>terminal/acquirer</b> system that encrypts the
+            <b>PIN block</b> (and optionally card data). Base Derivation Key → injected IPEK → a fresh key for every
+            transaction, indexed by the KSN counter. It protects the PIN in transit between terminal and bank.
+          </div>
+          <div style="margin-top:10px">
+            Both happen to use an incrementing counter (ATC vs. KSN) — which is exactly why they get blurred together.
+          </div>
+        </div>
+      </div>
+
+      <div class="refcard">
+        <h3>Key hierarchies</h3>
+        <div class="lead">Where every key comes from, and which never leaves hardware.</div>
+        <div class="hier">
+          <div class="h-row"><b>EMV / card authentication</b></div>
+          <div class="h-row"><span class="ka">IMK</span> Issuer Master Key <span class="arr">(in issuer HSM)</span></div>
+          <div class="h-row"><span class="arr">└▸ diversify by PAN+PSN ▸</span> <span class="ka">UDK</span> Unique Derived Key <span class="arr">(in chip)</span></div>
+          <div class="h-row"><span class="arr">&nbsp;&nbsp;&nbsp;└▸ derive by ATC ▸</span> <span class="ke">SK<sub>AC</sub></span> session key</div>
+          <div class="h-row"><span class="arr">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└▸ MAC over txn data ▸</span> <span class="ke">ARQC</span></div>
+          <div class="h-row" style="margin-top:12px"><b>DUKPT / PIN protection</b></div>
+          <div class="h-row"><span class="ka">BDK</span> Base Derivation Key <span class="arr">(acquirer HSM only)</span></div>
+          <div class="h-row"><span class="arr">└▸ derive by initial KSN ▸</span> <span class="ka">IPEK</span> <span class="arr">(injected into terminal)</span></div>
+          <div class="h-row"><span class="arr">&nbsp;&nbsp;&nbsp;└▸ derive by KSN counter ▸</span> <span class="ka">txn key</span></div>
+          <div class="h-row"><span class="arr">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└▸ variant mask ▸</span> <span class="ka">PIN key</span></div>
+          <div class="h-row"><span class="arr">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└▸ 3DES encrypt ▸</span> <span class="ke">enciphered PIN block</span></div>
+          <div class="h-row" style="margin-top:12px"><b>Zone keys / PIN translation</b></div>
+          <div class="h-row"><span class="ka">ZMK</span> Zone Master Key <span class="arr">protects ▸</span> <span class="ka">ZPK</span> Zone PIN Key per hop</div>
+          <div class="h-row"><span class="arr">PIN block re-enciphered ZPK→ZPK inside each HSM — clear PIN never exposed</span></div>
+        </div>
+      </div>
+
+      <div class="refcard">
+        <h3>The routing fork</h3>
+        <div class="lead">A transaction is "on-us" or "not-on-us", and that decides who sees it.</div>
+        <div class="gl">
+          <div class="term"><span class="k">On-us</span><span class="d">Acquirer and issuer are the <b>same bank</b>. The message never leaves the institution; no switch, no interchange.</span></div>
+          <div class="term"><span class="k">Not-on-us</span><span class="d">Different banks. The request is routed by card BIN through a switch.</span></div>
+          <div class="term"><span class="k">BKM</span><span class="d"><b>Bankalararası Kart Merkezi</b> — Turkey's national interbank switch (live as a router since 1993). Routes and later clears/settles domestic card traffic between member banks.</span></div>
+          <div class="term"><span class="k">Scheme</span><span class="d">For cross-border or scheme-routed traffic, <b>Visa / Mastercard</b> networks switch the message to the foreign issuer and add FX + scheme fees.</span></div>
+          <div class="term"><span class="k">HSM</span><span class="d">Hardware Security Module. Verifies the ARQC, generates the ARPC, and performs PIN translation. Keys are created, used, and destroyed inside it; they never appear in host memory.</span></div>
+        </div>
+      </div>
+
+      <div class="refcard full">
+        <h3>Glossary</h3>
+        <div class="gl" id="glossary"></div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+/* ============================================================
+   COLOR / LAYER MAPS
+============================================================ */
+const TRUST = {clear:'clear', enc:'enc', secret:'secret', plain:'data'};
+const LAYER = {
+  rf:   {label:'PHYSICAL', color:'var(--rf)'},
+  emv:  {label:'EMV / APDU', color:'var(--clear)'},
+  pin:  {label:'PIN / DUKPT', color:'var(--secret)'},
+  crypto:{label:'CRYPTOGRAM', color:'var(--enc)'},
+  iso:  {label:'ISO 8583', color:'var(--clear)'},
+  settle:{label:'CLEARING', color:'var(--dim)'},
+};
+const TRUSTCOLOR = {clear:'var(--clear)', enc:'var(--enc)', secret:'var(--secret)', data:'var(--ink)'};
+
+/* ============================================================
+   ACTORS (topology nodes)
+============================================================ */
+const ACTORS = {
+  card:    {x:80,  y:108, w:96,  h:62, label:'CARD',     sub:'EMV chip'},
+  pos:     {x:262, y:108, w:104, h:62, label:'POS',      sub:'terminal'},
+  acquirer:{x:470, y:108, w:120, h:62, label:'ACQUIRER', sub:'host'},
+  sw:      {x:668, y:108, w:108, h:62, label:'SWITCH',   sub:'BKM'},
+  issuer:  {x:868, y:108, w:104, h:62, label:'ISSUER',   sub:'host'},
+  acqhsm:  {x:470, y:192, w:120, h:0,  label:'',         sub:'HSM', tiny:true},
+  isshsm:  {x:868, y:192, w:104, h:0,  label:'',         sub:'HSM', tiny:true},
+};
+const WIRES = [['card','pos'],['pos','acquirer'],['acquirer','sw'],['sw','issuer']];
+
+/* ============================================================
+   SHARED STEP BUILDERS  (raw bytes are illustrative but
+   structurally accurate to the EMV / ISO 8583 specs)
+============================================================ */
+function apduRow(by,lb){return {by,lb};}
+
+const STEP = {};
+
+STEP.tap = {
+  n:'01', title:'Tap — RF field powers the chip', from:'pos', to:'card', layer:'rf', trust:'plain',
+  desc:"The terminal's 13.56\u202FMHz antenna creates an alternating field. The chip has no battery — it harvests power inductively from that field and boots its payment applet. No data has been exchanged yet; this is pure physics.",
+  insp:{kind:'note', lines:[
+    {t:'Carrier', v:'13.56 MHz (ISO/IEC 14443 Type A/B)'},
+    {t:'Coupling', v:'Inductive — terminal field energizes card coil'},
+    {t:'Data rate', v:'106–848 kbit/s'},
+    {t:'Result', v:'Applet powered, ready for first APDU'},
+  ]}
+};
+STEP.insert = {
+  n:'01', title:'Insert — contact plate engages (ATR)', from:'pos', to:'card', layer:'rf', trust:'plain',
+  desc:"On a contact card the gold pads touch the reader's contacts. The card answers with an ATR (Answer To Reset) describing voltage, protocol (T=0 / T=1) and timing before any command is sent.",
+  insp:{kind:'note', lines:[
+    {t:'Interface', v:'ISO/IEC 7816 contact pads'},
+    {t:'ATR', v:'3B 65 00 00 9C 11 01 01 03  (protocol T=0)'},
+    {t:'Result', v:'Reader knows protocol + timing, ready for SELECT'},
+  ]}
+};
+
+STEP.ppse = {
+  n:'02', title:'SELECT PPSE — discover applications', from:'pos', to:'card', layer:'emv', trust:'clear',
+  desc:"The terminal asks the card to list the payment applications it holds, by selecting the contactless directory \u201C2PAY.SYS.DDF01\u201D. The card replies with a list of AIDs (Application Identifiers).",
+  insp:{kind:'apdu',
+    c:{label:'C-APDU  ·  SELECT by name',
+       hex:[['00','struct'],['A4','struct'],['04','struct'],['00','struct'],['0E','struct'],
+            ['32','clear'],['50','clear'],['41','clear'],['59','clear'],['2E','clear'],['53','clear'],['59','clear'],['53','clear'],['2E','clear'],['44','clear'],['44','clear'],['46','clear'],['30','clear'],['31','clear'],['00','struct']],
+       rows:[apduRow('00','<b>CLA</b> — inter-industry, no secure messaging'),
+             apduRow('A4','<b>INS</b> — SELECT'),
+             apduRow('04','<b>P1</b> — select by DF name'),
+             apduRow('00','<b>P2</b> — first/only occurrence, return FCI'),
+             apduRow('0E','<b>Lc</b> — 14 data bytes follow'),
+             apduRow('32…31','<b>"2PAY.SYS.DDF01"</b> — the contactless PPSE directory'),
+             apduRow('00','<b>Le</b> — accept up to 256 response bytes')]},
+    r:{label:'R-APDU  ·  FCI with AID list',
+       hex:[['6F','struct'],['23','struct'],['84','struct'],['0E','struct'],
+            ['32','clear'],['50','clear'],['41','clear'],['59','clear'],['2E','clear'],['53','clear'],['59','clear'],['53','clear'],['2E','clear'],['44','clear'],['44','clear'],['46','clear'],['30','clear'],['31','clear'],
+            ['A5','struct'],['11','struct'],['BF','struct'],['0C','struct'],['0E','struct'],['61','struct'],['0C','struct'],['4F','struct'],['07','struct'],
+            ['A0','data'],['00','data'],['00','data'],['00','data'],['03','data'],['10','data'],['10','data'],
+            ['87','struct'],['01','struct'],['01','data'],['90','struct'],['00','struct']],
+       rows:[apduRow('6F','<b>FCI template</b>'),
+             apduRow('84','DF name = 2PAY.SYS.DDF01'),
+             apduRow('A5','FCI proprietary template'),
+             apduRow('61 / 4F','Application entry — <b>AID = A0000000031010</b> (Visa Credit/Debit)'),
+             apduRow('87 01','Application priority indicator = 1'),
+             apduRow('90 00','<b>SW1 SW2</b> — success')]}
+  }
+};
+STEP.pse = Object.assign({}, STEP.ppse, {
+  title:'SELECT PSE — discover applications (contact)',
+  desc:"On contact, the directory is \u201C1PAY.SYS.DDF01\u201D. Same SELECT mechanism, one byte differs ('1' = 0x31 vs '2' = 0x32). The card returns its AID list.",
+});
+STEP.pse.insp = JSON.parse(JSON.stringify(STEP.ppse.insp));
+STEP.pse.insp.c.hex[5] = ['31','clear'];
+STEP.pse.insp.c.rows[5] = apduRow('31…31','<b>"1PAY.SYS.DDF01"</b> — the contact PSE directory');
+STEP.pse.insp.r.hex[4] = ['31','clear'];
+
+STEP.aid = {
+  n:'03', title:'SELECT AID — choose the application', from:'pos', to:'card', layer:'emv', trust:'clear',
+  desc:"The terminal selects one AID. The card returns its FCI including the PDOL (Processing Data Object List) — a request for the terminal data the chip needs before it will start: amount, currency, country, date, and a fresh random number.",
+  insp:{kind:'apdu',
+    c:{label:'C-APDU  ·  SELECT AID',
+       hex:[['00','struct'],['A4','struct'],['04','struct'],['00','struct'],['07','struct'],
+            ['A0','clear'],['00','clear'],['00','clear'],['00','clear'],['03','clear'],['10','clear'],['10','clear'],['00','struct']],
+       rows:[apduRow('00 A4 04 00','SELECT by name'),
+             apduRow('07','Lc — 7-byte AID follows'),
+             apduRow('A0000000031010','<b>AID</b> — the chosen payment application'),
+             apduRow('00','Le')]},
+    r:{label:'R-APDU  ·  FCI + PDOL request',
+       hex:[['6F','struct'],['…','struct'],['84','struct'],['07','struct'],['A0','data'],['00','data'],['00','data'],['00','data'],['03','data'],['10','data'],['10','data'],
+            ['A5','struct'],['…','struct'],['9F','struct'],['38','struct'],['18','struct'],
+            ['9F','clear'],['66','clear'],['04','clear'],['9F','clear'],['02','clear'],['06','clear'],['5F','clear'],['2A','clear'],['02','clear'],['9A','clear'],['03','clear'],['9C','clear'],['01','clear'],['9F','clear'],['37','clear'],['04','clear'],
+            ['90','struct'],['00','struct']],
+       rows:[apduRow('6F / 84','FCI, DF name = selected AID'),
+             apduRow('9F38','<b>PDOL</b> — list of data the card wants from the terminal:'),
+             apduRow('9F66','TTQ — Terminal Transaction Qualifiers (4 bytes)'),
+             apduRow('9F02','Amount, authorised (6)'),
+             apduRow('5F2A','Transaction currency code (2)'),
+             apduRow('9A','Transaction date (3)'),
+             apduRow('9C','Transaction type (1)'),
+             apduRow('9F37','<b>Unpredictable Number</b> (4) — terminal random, anti-replay'),
+             apduRow('90 00','success')]}
+  }
+};
+
+STEP.gpo = {
+  n:'04', title:'GET PROCESSING OPTIONS', from:'pos', to:'card', layer:'emv', trust:'clear',
+  desc:"The terminal sends back exactly the PDOL data the card asked for, wrapped in tag 83. The card answers with the AIP (which functions it supports) and the AFL (which records to read next). This is where the transaction's parameters are locked in.",
+  insp:{kind:'apdu',
+    c:{label:'C-APDU  ·  GPO with PDOL data',
+       hex:[['80','struct'],['A8','struct'],['00','struct'],['00','struct'],['1F','struct'],
+            ['83','struct'],['1D','struct'],
+            ['36','clear'],['00','clear'],['40','clear'],['00','clear'],
+            ['00','clear'],['00','clear'],['00','clear'],['00','clear'],['64','clear'],['00','clear'],
+            ['09','clear'],['78','clear'],['25','clear'],['06','clear'],['10','clear'],['00','clear'],
+            ['7C','enc'],['1A','enc'],['9B','enc'],['44','enc'],['00','struct']],
+       rows:[apduRow('80 A8 00 00','<b>GET PROCESSING OPTIONS</b>'),
+             apduRow('83 1D','Command template, 29 bytes of PDOL data'),
+             apduRow('36004000','TTQ — online-capable, CVM required'),
+             apduRow('000000006400','Amount = 100.00 (minor units)'),
+             apduRow('0978','Currency 0978 = EUR'),
+             apduRow('250610','Date = 2025-06-10'),
+             apduRow('7C1A9B44','<b>Unpredictable Number</b> — fresh per transaction')]},
+    r:{label:'R-APDU  ·  AIP + AFL',
+       hex:[['77','struct'],['…','struct'],['82','struct'],['02','struct'],['39','data'],['00','data'],
+            ['94','struct'],['10','struct'],['08','data'],['01','data'],['01','data'],['00','data'],['10','data'],['01','data'],['04','data'],['00','data'],['…','data'],
+            ['90','struct'],['00','struct']],
+       rows:[apduRow('82 / 3900','<b>AIP</b> — supports CDA, cardholder verification, issuer auth'),
+             apduRow('94','<b>AFL</b> — Application File Locator: which SFI/records to READ'),
+             apduRow('90 00','success')]}
+  }
+};
+
+STEP.read = {
+  n:'05', title:'READ RECORD — pull card data & certificates', from:'pos', to:'card', layer:'emv', trust:'clear',
+  desc:"Following the AFL, the terminal reads the records: PAN, expiry, cardholder name, the CVM list, the CDOL templates, and — crucially — the card's public-key certificates used for offline authentication.",
+  insp:{kind:'apdu',
+    c:{label:'C-APDU  ·  READ RECORD (SFI 1, rec 1)',
+       hex:[['00','struct'],['B2','struct'],['01','struct'],['0C','struct'],['00','struct']],
+       rows:[apduRow('00 B2','READ RECORD'),
+             apduRow('01','record number 1'),
+             apduRow('0C','P2 — SFI 1, record-number mode'),
+             apduRow('00','Le')]},
+    r:{label:'R-APDU  ·  card data',
+       hex:[['70','struct'],['…','struct'],['5A','struct'],['08','struct'],
+            ['54','clear'],['13','clear'],['33','clear'],['00','clear'],['89','clear'],['02','clear'],['00','clear'],['11','clear'],
+            ['5F','struct'],['24','struct'],['03','struct'],['28','clear'],['12','clear'],['31','clear'],
+            ['8C','struct'],['…','struct'],['8D','struct'],['…','struct'],['90','struct'],['00','struct']],
+       rows:[apduRow('5A','<b>PAN</b> = 5413 3300 8902 0011'),
+             apduRow('5F24','Expiry = 2028-12-31'),
+             apduRow('8C','<b>CDOL1</b> — data the card wants for the 1st GENERATE AC'),
+             apduRow('8D','<b>CDOL2</b> — data for the 2nd GENERATE AC'),
+             apduRow('90 00','success')]}
+  }
+};
+
+STEP.oda_cda = {
+  n:'06', title:'Offline Data Authentication (CDA)', from:'pos', to:'pos', layer:'crypto', trust:'enc',
+  desc:"The terminal verifies the card is not a clone, entirely offline, using public-key cryptography. It walks the certificate chain from the scheme's CA public key down to the card's, then later folds the cryptogram into the same signature (Combined DDA). No network needed for this step.",
+  insp:{kind:'keymath', steps:[
+    {t:'<b>CA public key</b> (in terminal, by RID+index)', v:'RID A000000003 · index 09', cls:'enc',
+     op:'recover ▸'},
+    {t:'<b>Issuer public key</b> (from card cert)', v:'verify signature with CA key ▸ OK', cls:'enc',
+     op:'recover ▸'},
+    {t:'<b>ICC public key</b> (from card cert)', v:'verify signature with issuer key ▸ OK', cls:'enc',
+     op:'challenge ▸'},
+    {t:'<b>Dynamic signature</b> (SDAD)', v:'card signs UN + txn data with its private key', cls:'enc',
+     op:'verify with ICC public key ▸'},
+    {t:'<b>Result</b>', v:'CARD AUTHENTIC — not a clone', cls:'enc', op:''},
+  ], note:"CDA binds card authentication to the application cryptogram, so the very value that goes online is the one that was signed."}
+};
+STEP.oda_dda = Object.assign({}, STEP.oda_cda, {
+  title:'Offline Data Authentication (DDA)',
+  desc:"For a contact card, the terminal issues an INTERNAL AUTHENTICATE: the card signs the terminal's challenge with its private key, and the terminal verifies it up the certificate chain. Proves the chip holds the matching private key.",
+});
+
+STEP.cvm_online_pin = {
+  n:'07', title:'Cardholder Verification — Online PIN (DUKPT)', from:'pos', to:'pos', layer:'pin', trust:'secret',
+  desc:"The cardholder enters a PIN on the pad. The terminal forms an ISO format-0 PIN block, derives a one-time key from its injected DUKPT material, encrypts the block, and attaches the KSN so the receiving HSM can re-derive the same key. The clear PIN never leaves the secure pad.",
+  insp:{kind:'keymath', steps:[
+    {t:'<b>BDK</b> — Base Derivation Key (lives only in acquirer HSM)', v:'0123456789ABCDEF FEDCBA9876543210', cls:'secret', op:'+ initial KSN, derive ▸'},
+    {t:'<b>IPEK</b> — injected into this terminal at provisioning', v:'6AC292FAA1315B4D 858AB3A3D7D5933A', cls:'secret', op:'+ KSN counter, non-reversible derive ▸'},
+    {t:'<b>Transaction key</b> (this tap only)', v:'F139B6B9 7B5A8E2C 1D44C0E5 9A2F71B0', cls:'secret', op:'XOR variant 00..FF ▸'},
+    {t:'<b>PIN key</b>', v:'F139B6B9 7B5A8E2C 1D44C0E5 9A2F714F', cls:'secret', op:'build PIN block (ISO-0) ▸'},
+    {t:'<b>Clear PIN block</b> = (04 PIN FFFF…) XOR (0000 + PAN<sub>12</sub>)', v:'041234FFFFFFFFFF \u2295 0000489020011 …', cls:'clear', op:'3DES encrypt with PIN key ▸'},
+    {t:'<b>Enciphered PIN block</b> → ISO 8583 DE52', v:'A7F3C091 5E2B88D4', cls:'enc', op:'send KSN alongside ▸'},
+    {t:'<b>KSN</b> (travels with the ciphertext)', v:'FFFF9876543210E0 0001', cls:'clear', op:''},
+  ], note:"Key-derivation values shown are illustrative of the X9.24 DUKPT algorithm. What's exact: a unique key per transaction, the KSN carries the counter, and only the HSM at the far end can reproduce the key."}
+};
+
+STEP.cvm_offline_pin = {
+  n:'07', title:'Cardholder Verification — Offline PIN (VERIFY)', from:'pos', to:'card', layer:'pin', trust:'secret',
+  desc:"The PIN is checked by the chip itself, never going online. The terminal sends a VERIFY command carrying the PIN block; the card compares it internally and answers pass/fail. Enciphered offline PIN encrypts it under the card's public key first.",
+  insp:{kind:'apdu',
+    c:{label:'C-APDU  ·  VERIFY (enciphered offline PIN)',
+       hex:[['00','struct'],['20','struct'],['00','struct'],['88','struct'],['08','struct'],
+            ['A2','secret'],['5C','secret'],['11','secret'],['9F','secret'],['0D','secret'],['44','secret'],['E1','secret'],['7B','secret']],
+       rows:[apduRow('00 20','<b>VERIFY</b>'),
+             apduRow('00 88','P2 = enciphered PIN (88) vs plaintext (80)'),
+             apduRow('08','8-byte PIN block follows'),
+             apduRow('A25C…','PIN block enciphered under the ICC public key')]},
+    r:{label:'R-APDU  ·  result',
+       hex:[['90','struct'],['00','struct']],
+       rows:[apduRow('90 00','<b>PIN OK</b> (63 Cx = wrong, x tries left)')]}
+  }
+};
+
+STEP.cvm_none = {
+  n:'06', title:'Cardholder Verification — none required', from:'pos', to:'pos', layer:'emv', trust:'plain',
+  desc:"The amount is below the contactless CVM limit, so the CVM list resolves to \u201CNo CVM required\u201D. No PIN, no signature — the speed path for low-value taps such as transit and unattended terminals.",
+  insp:{kind:'note', lines:[
+    {t:'CVM list outcome', v:'No CVM required'},
+    {t:'Reason', v:'Amount under contactless CVM limit (e.g. 50.00)'},
+    {t:'Risk held by', v:'Issuer / scheme floor-limit rules'},
+    {t:'PIN block', v:'absent — DE52 not present'},
+  ]}
+};
+
+function genac(kind){ // 'arqc' | 'tc'
+  const arqc = kind==='arqc';
+  return {
+    n:'08', title: arqc ? 'GENERATE AC (1st) — card returns ARQC' : 'GENERATE AC — card returns TC (offline)',
+    from:'pos', to:'card', layer:'crypto', trust:'enc',
+    desc: arqc
+      ? "The terminal asks the chip for a cryptogram, handing over the CDOL1 data. The chip's risk logic decides to go online and returns an ARQC — an 8-byte MAC over the transaction, signed with a key only it and the issuer can compute. The terminal cannot read or alter it."
+      : "Below the floor limit and authenticated offline, the chip approves on its own authority and returns a TC (Transaction Certificate). No network round-trip happens; the TC is banked for later settlement.",
+    insp:{kind:'genac', arqc, steps:[
+      {t:'<b>IMK<sub>AC</sub></b> — Issuer Master Key (issuer HSM)', v:'0123456789ABCDEF 0123456789ABCDEF', cls:'secret', op:'diversify by PAN+PSN ▸'},
+      {t:'<b>UDK</b> — Unique Derived Key (inside chip)', v:'C2F8A11D 90B4E673 5A0CDE21 88FF4490', cls:'secret', op:'derive by ATC ▸'},
+      {t:'<b>Session key SK<sub>AC</sub></b>', v:'7E1B0930 A4C5F2D8 6B339017 EE5A22C4', cls:'enc', op:'CBC-MAC over (AIP, ATC, amount, UN, currency, TVR…) ▸'},
+      {t: arqc ? '<b>ARQC</b> → carried in ISO 8583 DE55' : '<b>TC</b> → stored for clearing',
+       v: arqc ? 'A1B2C3D4 E5F60718' : '3F9C00AB 71D2E640', cls:'enc', op:''},
+    ],
+    apdu:{c:{label:'C-APDU  ·  GENERATE AC',
+       hex:[['80','struct'],['AE','struct'],[arqc?'80':'40','struct'],['00','struct'],['2B','struct'],['…','clear'],['…','clear'],['…','clear']],
+       rows:[apduRow('80 AE','<b>GENERATE APPLICATION CRYPTOGRAM</b>'),
+             apduRow(arqc?'80':'40','<b>P1</b> — '+(arqc?'request ARQC (online)':'request TC (offline approve)')+'  ·  00=AAC declines'),
+             apduRow('2B','CDOL1 data length'),
+             apduRow('…','amount, UN, TVR, currency, date, type, ATC…')]},
+      r:{label:'R-APDU  ·  cryptogram',
+       hex:[['77','struct'],['…','struct'],['9F','struct'],['27','struct'],['01','struct'],[arqc?'80':'40','enc'],
+            ['9F','struct'],['36','struct'],['02','struct'],['00','data'],['5A','data'],
+            ['9F','struct'],['26','struct'],['08','struct'],['A1','enc'],['B2','enc'],['C3','enc'],['D4','enc'],['E5','enc'],['F6','enc'],['07','enc'],['18','enc'],
+            ['9F','struct'],['10','struct'],['…','data'],['90','struct'],['00','struct']],
+       rows:[apduRow('9F27', arqc?'<b>CID = 80</b> → ARQC (go online)':'<b>CID = 40</b> → TC (approved offline)'),
+             apduRow('9F36','<b>ATC</b> = 005A — the counter folded into the key'),
+             apduRow('9F26','<b>Application Cryptogram</b> = '+(arqc?'A1B2C3D4E5F60718':'3F9C00AB71D2E640')),
+             apduRow('9F10','IAD — Issuer Application Data'),
+             apduRow('90 00','success')]}
+    }}
+  };
+}
+STEP.genac_arqc = genac('arqc');
+STEP.genac_tc   = genac('tc');
+
+function iso0100(withPin){
+  const des = withPin
+    ? [2,3,4,7,11,12,13,14,22,24,25,41,42,49,52,55]
+    : [2,3,4,7,11,12,13,14,22,24,25,41,42,49,55];
+  return {
+    n:'09', title:'Build ISO 8583 0100 — authorization request', from:'pos', to:'acquirer', layer:'iso', trust:'clear',
+    desc:"The terminal/acquirer packs everything into an ISO 8583 authorization request. MTI 0100 says \u201Cauth request, from acquirer.\u201D A bitmap acts as the table of contents — one bit per field present. The ARQC rides in DE55"+(withPin?", the enciphered PIN in DE52.":"; no PIN field on this no-CVM transaction."),
+    insp:{kind:'iso', mti:'0100', mtiNote:['0','1987 version'],
+      de:des, withPin}
+  };
+}
+STEP.iso0100_pin = iso0100(true);
+STEP.iso0100_nopin = iso0100(false);
+
+function routeStep(target, label, sub, note){
+  return {
+    n:'10', title:label, from:'acquirer', to:target, layer:'iso', trust:'clear',
+    desc:note,
+    insp:{kind:'note', lines:sub}
+  };
+}
+STEP.route_bkm = routeStep('sw','Acquirer → Switch (BKM)','',
+  "Not-on-us: the acquirer reads the card BIN, sees a different issuer, and hands the 0100 to BKM — Turkey's national interbank switch — to route it to the right bank.",
+  );
+STEP.route_bkm.insp = {kind:'note', lines:[
+  {t:'Routing key', v:'BIN 541333 → foreign-to-acquirer issuer'},
+  {t:'Decision', v:'NOT-ON-US → route via BKM'},
+  {t:'Switch', v:'Bankalararası Kart Merkezi (national switch since 1993)'},
+  {t:'In transit', v:'PIN block (DE52) translated inside the switch HSM — ZPK→ZPK, clear PIN never exposed'},
+]};
+
+STEP.bkm_to_issuer = {
+  n:'11', title:'Switch (BKM) → Issuer', from:'sw', to:'issuer', layer:'iso', trust:'clear',
+  desc:"BKM forwards the 0100 to the issuer host. As the PIN block crosses the zone boundary, the switch HSM translates it from the acquirer's PIN key to the issuer's — decrypt and re-encrypt happen entirely inside hardware.",
+  insp:{kind:'note', lines:[
+    {t:'Hop', v:'BKM → issuer host'},
+    {t:'PIN translation', v:'DE52 re-enciphered under issuer ZPK (inside HSM)'},
+    {t:'Carried', v:'DE55 ARQC unchanged — only the issuer can verify it'},
+  ]}
+};
+
+STEP.route_onus = {
+  n:'10', title:'On-us — routed inside the bank', from:'acquirer', to:'issuer', layer:'iso', trust:'clear',
+  desc:"The card BIN belongs to the same bank that owns the terminal. The transaction never touches the external switch — it loops internally from acquiring to issuing. No interchange, no switch fee. (Notice the BKM node stays dark.)",
+  insp:{kind:'note', lines:[
+    {t:'Routing key', v:'BIN matches acquirer bank'},
+    {t:'Decision', v:'ON-US → internal routing, switch bypassed'},
+    {t:'Cost', v:'No interchange or switch fee'},
+    {t:'PIN', v:'Translated once inside the bank HSM'},
+  ]}
+};
+
+STEP.route_xborder = {
+  n:'10', title:'Acquirer → Scheme network (cross-border)', from:'acquirer', to:'sw', layer:'iso', trust:'clear',
+  desc:"The card was issued abroad. Domestic BKM can't reach the foreign issuer, so the acquirer routes through the Visa / Mastercard network instead. The scheme handles cross-border switching, currency conversion and interchange.",
+  insp:{kind:'note', lines:[
+    {t:'Routing key', v:'BIN = foreign issuer'},
+    {t:'Decision', v:'Route via Visa/Mastercard (not BKM)'},
+    {t:'Added', v:'FX conversion + scheme + cross-border interchange fees'},
+    {t:'DE49', v:'Transaction currency may differ from settlement currency'},
+  ]}
+};
+STEP.scheme_to_issuer = Object.assign({}, STEP.bkm_to_issuer, {
+  n:'11', title:'Scheme network → Foreign issuer',
+  desc:"The scheme forwards the request to the issuing bank abroad. PIN block is translated through the scheme's HSM zone keys on the way.",
+});
+
+STEP.issuer_verify = {
+  n:'12', title:'Issuer HSM — verify ARQC, generate ARPC', from:'issuer', to:'issuer', layer:'crypto', trust:'enc',
+  desc:"Inside the issuer's HSM: re-derive the card's session key, recompute the ARQC over the received data, and compare. A match proves the card is genuine and the data untouched. Funds are checked, then the HSM mints an ARPC — the issuer's signed answer — for the card to verify in return.",
+  insp:{kind:'keymath', steps:[
+    {t:'<b>IMK<sub>AC</sub></b> (issuer HSM)', v:'0123456789ABCDEF 0123456789ABCDEF', cls:'secret', op:'diversify by PAN+PSN ▸'},
+    {t:'<b>UDK</b> re-derived', v:'C2F8A11D 90B4E673 5A0CDE21 88FF4490', cls:'secret', op:'derive by received ATC=005A ▸'},
+    {t:'<b>SK<sub>AC</sub></b> recomputed → recompute MAC', v:'recomputed ARQC = A1B2C3D4 E5F60718', cls:'enc', op:'compare to received ▸ MATCH'},
+    {t:'<b>Funds check</b>', v:'available balance ≥ 100.00 EUR ▸ OK', cls:'clear', op:'authorize ▸'},
+    {t:'<b>ARPC</b> = MAC over (ARQC ⊕ ARC)', v:'7B44E2C0', cls:'enc', op:'→ ISO 8583 DE55, response field 91'},
+  ], note:"The card will later verify this ARPC: both ends authenticate each other, not just the card to the bank."}
+};
+
+STEP.issuer_decline = {
+  n:'12', title:'Issuer HSM — ARQC valid, funds insufficient', from:'issuer', to:'issuer', layer:'crypto', trust:'enc',
+  desc:"The ARQC verifies — the card is genuine — but the balance check fails. The issuer authorizes nothing and prepares a decline. It still generates an ARPC carrying the decline indication, so the card learns the issuer's verdict.",
+  insp:{kind:'keymath', steps:[
+    {t:'<b>ARQC verification</b>', v:'recomputed = received = A1B2C3D4E5F60718 ▸ MATCH', cls:'enc', op:'card is genuine ▸'},
+    {t:'<b>Funds check</b>', v:'balance 12.40 < amount 100.00 EUR', cls:'bad', op:'reject ▸'},
+    {t:'<b>Response code</b>', v:'DE39 = 51  (insufficient funds)', cls:'clear', op:'build ARPC with decline ARC ▸'},
+    {t:'<b>ARPC</b>', v:'C019A7F2  (carries decline)', cls:'enc', op:''},
+  ], note:"Field 39 = 51 is one of the most common decline codes. 00 = approved, 05 = do not honor, 55 = wrong PIN, 91 = issuer unavailable."}
+};
+
+function iso0110(rc){
+  const ok = rc==='00';
+  const des = [2,3,4,7,11,12,38,39,41,49,55].filter(d=> ok ? true : d!==38);
+  return {
+    n:'13', title:'ISO 8583 0110 — authorization response', from:'issuer', to:'pos', layer:'iso',
+    trust: ok?'clear':'clear', verdictBack:true,
+    path:['issuer','sw','acquirer','pos'],
+    desc:"The issuer's answer travels back along the same path. MTI 0110 = \u201Cauth response.\u201D The whole transaction turns on one field: DE39, the response code. "+(ok?"00 means approved.":"51 means insufficient funds — declined."),
+    insp:{kind:'iso', mti:'0110', mtiNote:['1','response'],
+      de:des, rc, isResponse:true}
+  };
+}
+STEP.iso0110_ok = iso0110('00');
+STEP.iso0110_decline = iso0110('51');
+
+STEP.genac2_tc = {
+  n:'14', title:'GENERATE AC (2nd) — card validates ARPC, returns TC', from:'pos', to:'card', layer:'crypto', trust:'enc',
+  desc:"The terminal passes the issuer's ARPC back to the chip. The card verifies it with its own key — confirming the response really came from its issuer — and, satisfied, issues a TC (Transaction Certificate) to finalize. Mutual authentication complete.",
+  insp:{kind:'genac', arqc:false, steps:[
+    {t:'<b>ARPC from issuer</b>', v:'7B44E2C0', cls:'enc', op:'card verifies with SK ▸ valid ▸'},
+    {t:'<b>Issuer authenticated</b>', v:'response genuinely from this issuer', cls:'enc', op:'finalize ▸'},
+    {t:'<b>TC</b> → stored for clearing', v:'88AE7C31 0042F9D5', cls:'enc', op:''},
+  ],
+  apdu:{c:{label:'C-APDU  ·  2nd GENERATE AC',
+     hex:[['80','struct'],['AE','struct'],['40','struct'],['00','struct'],['…','struct'],['7B','enc'],['44','enc'],['E2','enc'],['C0','enc'],['…','data']],
+     rows:[apduRow('80 AE 40 00','request TC'),apduRow('7B44E2C0','ARPC handed to the card to verify'),apduRow('…','CDOL2 data')]},
+    r:{label:'R-APDU  ·  TC',
+     hex:[['77','struct'],['…','struct'],['9F','struct'],['27','struct'],['01','struct'],['40','enc'],['9F','struct'],['26','struct'],['08','struct'],['88','enc'],['AE','enc'],['7C','enc'],['31','enc'],['00','enc'],['42','enc'],['F9','enc'],['D5','enc'],['90','struct'],['00','struct']],
+     rows:[apduRow('9F27 = 40','<b>TC</b> — transaction approved & finalized'),apduRow('9F26','TC = 88AE7C310042F9D5'),apduRow('90 00','success')]}
+  }}
+};
+
+STEP.genac2_aac = {
+  n:'14', title:'GENERATE AC (2nd) — card returns AAC (decline)', from:'pos', to:'card', layer:'crypto', trust:'enc',
+  desc:"The issuer declined. The terminal still completes the EMV dialogue: it passes the response to the card, which returns an AAC (Application Authentication Cryptogram) — the cryptographic record of a declined transaction.",
+  insp:{kind:'genac', arqc:false, steps:[
+    {t:'<b>Issuer response</b>', v:'DE39 = 51 (insufficient funds)', cls:'bad', op:'card records decline ▸'},
+    {t:'<b>AAC</b> — declined cryptogram', v:'1C5503EE 9A77B210', cls:'enc', op:''},
+  ],
+  apdu:{c:{label:'C-APDU  ·  2nd GENERATE AC',
+     hex:[['80','struct'],['AE','struct'],['00','struct'],['00','struct'],['…','data']],
+     rows:[apduRow('80 AE 00 00','P1 = 00 → request AAC (decline)')]},
+    r:{label:'R-APDU  ·  AAC',
+     hex:[['77','struct'],['…','struct'],['9F','struct'],['27','struct'],['01','struct'],['00','enc'],['9F','struct'],['26','struct'],['08','struct'],['1C','enc'],['55','enc'],['03','enc'],['EE','enc'],['9A','enc'],['77','enc'],['B2','enc'],['10','enc'],['90','struct'],['00','struct']],
+     rows:[apduRow('9F27 = 00','<b>AAC</b> — transaction declined'),apduRow('9F26','AAC = 1C5503EE9A77B210')]}
+  }}
+};
+
+STEP.approved = {
+  n:'15', title:'Approved', from:'pos', to:'pos', layer:'settle', trust:'plain', verdict:'ok',
+  desc:"The terminal prints/shows approval and keeps the TC. The cardholder is done in under a couple of seconds; the money has not actually moved yet — that happens at settlement.",
+  insp:{kind:'verdict', ok:true, big:'APPROVED', sub:'Auth code 654321 · TC banked for settlement'}
+};
+STEP.approved_offline = Object.assign({},STEP.approved,{
+  n:'10', desc:"Approved offline on the chip's own authority. The TC is stored and will be uploaded in the next settlement batch.",
+  insp:{kind:'verdict', ok:true, big:'APPROVED', sub:'Offline · TC stored for batch upload'}
+});
+STEP.declined = {
+  n:'15', title:'Declined', from:'pos', to:'pos', layer:'settle', trust:'plain', verdict:'bad',
+  desc:"The terminal shows the decline reason. Nothing settles. The cardholder can try another card or a smaller amount.",
+  insp:{kind:'verdict', ok:false, big:'DECLINED', sub:'DE39 = 51 · Insufficient funds'}
+};
+
+STEP.settle = {
+  n:'16', title:'Clearing & settlement (later, batched)', from:'acquirer', to:'sw', layer:'settle', trust:'plain',
+  desc:"Authorization only reserved funds. Hours later, the acquirer submits the captured TCs in a batch. The switch nets each bank's position; actual money moves between banks via the central bank account, minus interchange.",
+  insp:{kind:'note', lines:[
+    {t:'Message', v:'0220 / 0320 advice — capture & clearing'},
+    {t:'Netting', v:'BKM computes each member bank\u2019s net debit/credit'},
+    {t:'Settlement', v:'Funds move via accounts at the central bank (TCMB)'},
+    {t:'Interchange', v:'Acquirer pays issuer a fee per cleared transaction'},
+  ]}
+};
+STEP.settle_offline = Object.assign({},STEP.settle,{
+  n:'11', from:'pos', to:'acquirer',
+  desc:"Offline approvals accumulate on the terminal and upload in the next batch. Same clearing and netting as online, just deferred capture.",
+});
+
+/* ---- PIN deep-dive bespoke steps ---- */
+STEP.pin_entry = {
+  n:'01', title:'PIN entered on the secure pad', from:'pos', to:'pos', layer:'pin', trust:'secret',
+  desc:"The cardholder types the PIN on a tamper-protected pad. From this instant the digits exist in clear form only inside hardware designed to erase itself if opened.",
+  insp:{kind:'note', lines:[
+    {t:'PIN', v:'1234  (never shown, never logged)'},
+    {t:'Device', v:'PCI-PTS approved secure PIN pad'},
+    {t:'Tamper', v:'Mesh detects intrusion → keys zeroized'},
+  ]}
+};
+STEP.pin_block = {
+  n:'02', title:'Form the ISO format-0 PIN block', from:'pos', to:'pos', layer:'pin', trust:'secret',
+  desc:"The PIN is combined with the PAN so the same PIN yields a different block on different cards. Format-0 XORs a PIN field with a PAN field.",
+  insp:{kind:'keymath', steps:[
+    {t:'PIN field  = C N PIN F-pad', v:'0 4 1234 F F F F F F', cls:'clear', op:'XOR ▸'},
+    {t:'PAN field  = 0000 + rightmost 12 PAN digits (excl. check)', v:'0000 489020011 _', cls:'clear', op:'='},
+    {t:'<b>Clear PIN block</b>', v:'041234FFF F76FDFEE', cls:'clear', op:''},
+  ], note:"ISO 9564 format 0. Binding the PAN means a captured block can't be replayed onto another card."}
+};
+STEP.dukpt_derive = {
+  n:'03', title:'DUKPT — derive a one-time PIN key', from:'pos', to:'pos', layer:'pin', trust:'secret',
+  desc:"The terminal never stores the BDK. At provisioning it received an IPEK derived from the BDK; from that it derives a unique key for every transaction, indexed by the KSN counter. Past keys can't be recovered from the current one.",
+  insp:{kind:'keymath', steps:[
+    {t:'<b>BDK</b> (acquirer HSM only — never in terminal)', v:'0123456789ABCDEF FEDCBA9876543210', cls:'secret', op:'derive at provisioning ▸'},
+    {t:'<b>IPEK</b> (injected once into this terminal)', v:'6AC292FAA1315B4D 858AB3A3D7D5933A', cls:'secret', op:'+ KSN counter 0001 ▸'},
+    {t:'<b>Transaction key</b>', v:'F139B6B9 7B5A8E2C 1D44C0E5 9A2F71B0', cls:'secret', op:'XOR PIN variant ▸'},
+    {t:'<b>PIN key</b> (this transaction only)', v:'F139B6B9 7B5A8E2C 1D44C0E5 9A2F714F', cls:'secret', op:''},
+  ], note:"Illustrative values for the X9.24 algorithm. The real guarantees: one key per transaction, forward security, and the KSN tells the far HSM how to reproduce it."}
+};
+STEP.dukpt_encrypt = {
+  n:'04', title:'Encrypt PIN block, attach KSN', from:'pos', to:'acquirer', layer:'pin', trust:'enc',
+  desc:"3DES encrypts the clear PIN block under the one-time PIN key. The ciphertext goes into ISO 8583 DE52; the KSN goes into DE53/scheme field so the receiver can re-derive the key. The clear PIN is now gone from terminal memory.",
+  insp:{kind:'keymath', steps:[
+    {t:'3DES( PIN key , clear PIN block )', v:'A7F3C091 5E2B88D4', cls:'enc', op:'→ ISO 8583 DE52'},
+    {t:'<b>KSN</b> sent alongside', v:'FFFF9876543210E0 0001', cls:'clear', op:'→ identifies BDK + counter'},
+  ], note:"DE52 is the enciphered PIN; the KSN is the recipe to rebuild the key, not the key itself."}
+};
+STEP.hsm_acq = {
+  n:'05', title:'Acquirer HSM — decrypt & translate', from:'acquirer', to:'acquirer', layer:'pin', trust:'secret',
+  desc:"The acquirer HSM uses the KSN to re-derive the exact same PIN key from its BDK, decrypts the block, and immediately re-encrypts it under the zone key shared with the next hop. The clear PIN exists only inside the HSM, for microseconds.",
+  insp:{kind:'keymath', steps:[
+    {t:'Re-derive PIN key from <b>BDK + KSN</b>', v:'F139B6B9 … 9A2F714F', cls:'secret', op:'decrypt DE52 ▸'},
+    {t:'Clear PIN block (inside HSM only)', v:'041234FFF F76FDFEE', cls:'clear', op:'re-encrypt ▸'},
+    {t:'Enciphered under acquirer→switch <b>ZPK</b>', v:'5D90C2A4 1B7E6630', cls:'enc', op:'forward ▸'},
+  ], note:"This decrypt-then-re-encrypt is PIN translation. It repeats at every zone boundary."}
+};
+STEP.hsm_sw = {
+  n:'06', title:'Switch HSM — translate to issuer zone', from:'sw', to:'sw', layer:'pin', trust:'secret',
+  desc:"BKM's HSM translates the PIN block from the acquirer's zone key to the issuer's zone key. Same invariant: the clear value never leaves hardware.",
+  insp:{kind:'keymath', steps:[
+    {t:'Decrypt under acquirer ZPK (in HSM)', v:'041234FFF F76FDFEE', cls:'clear', op:'re-encrypt ▸'},
+    {t:'Enciphered under switch→issuer <b>ZPK</b>', v:'E2114C8B 77A0F39D', cls:'enc', op:'forward ▸'},
+  ]}
+};
+STEP.hsm_iss = {
+  n:'07', title:'Issuer HSM — verify the PIN', from:'issuer', to:'issuer', layer:'pin', trust:'secret',
+  desc:"The issuer HSM decrypts the block and checks the PIN — not by storing it, but by comparing a derived value (a Visa PVV or IBM 3624 offset) held on file. It returns only pass or fail.",
+  insp:{kind:'keymath', steps:[
+    {t:'Decrypt under issuer ZPK (in HSM)', v:'041234FFF F76FDFEE', cls:'clear', op:'extract PIN ▸'},
+    {t:'Compute PVV from PIN + PAN + PVKI', v:'PVV = 4291', cls:'secret', op:'compare to value on file ▸'},
+    {t:'On-file PVV', v:'4291  ▸  MATCH', cls:'secret', op:''},
+    {t:'<b>Result</b>', v:'PIN CORRECT', cls:'ok', op:''},
+  ], note:"The issuer never stores the PIN itself — only a one-way value it can recompute. Verification happens entirely inside the HSM."}
+};
+
+/* ============================================================
+   SCENARIOS
+============================================================ */
+const SCENARIOS = {
+  contactless_ok: {
+    name:'Contactless approved — via BKM',
+    tag:'online · not-on-us', color:'var(--ok)',
+    blurb:'The full happy path: tap, the EMV dialogue, online PIN over DUKPT, an ARQC verified by the issuer, approval back through Turkey\u2019s BKM switch.',
+    route:'CARD → POS → ACQUIRER → BKM → ISSUER',
+    active:['card','pos','acquirer','sw','issuer'],
+    steps:['tap','ppse','aid','gpo','read','oda_cda','cvm_online_pin','genac_arqc',
+           'iso0100_pin','route_bkm','bkm_to_issuer','issuer_verify','iso0110_ok','genac2_tc','approved','settle']
+  },
+  contact_offline: {
+    name:'Contact chip + offline PIN — approved offline',
+    tag:'offline · TC', color:'var(--clear)',
+    blurb:'A contact card below the floor limit. PIN is checked by the chip via VERIFY, the card returns a TC, and nothing ever goes online.',
+    route:'CARD → POS  (no network)',
+    active:['card','pos'],
+    steps:['insert','pse','aid','gpo','read','oda_dda','cvm_offline_pin','genac_tc','approved_offline','settle_offline']
+  },
+  onus: {
+    name:'On-us — issuer = acquirer',
+    tag:'online · same bank', color:'var(--enc)',
+    blurb:'Same bank issues the card and owns the terminal. The request loops internally; the BKM switch stays dark and there is no interchange.',
+    route:'CARD → POS → ACQUIRER ↻ ISSUER  (switch bypassed)',
+    active:['card','pos','acquirer','issuer'],
+    steps:['tap','ppse','aid','gpo','read','oda_cda','cvm_online_pin','genac_arqc',
+           'iso0100_pin','route_onus','issuer_verify','iso0110_ok','genac2_tc','approved','settle']
+  },
+  xborder: {
+    name:'Cross-border — via Visa/Mastercard',
+    tag:'online · foreign issuer', color:'var(--rf)',
+    blurb:'A foreign-issued card tapped in Turkey. BKM can\u2019t reach the issuer, so the scheme network switches it abroad, adding FX and cross-border interchange.',
+    route:'CARD → POS → ACQUIRER → SCHEME → ISSUER',
+    active:['card','pos','acquirer','sw','issuer'],
+    steps:['tap','ppse','aid','gpo','read','oda_cda','cvm_online_pin','genac_arqc',
+           'iso0100_pin','route_xborder','scheme_to_issuer','issuer_verify','iso0110_ok','genac2_tc','approved','settle']
+  },
+  declined: {
+    name:'Declined — insufficient funds',
+    tag:'online · DE39 = 51', color:'var(--bad)',
+    blurb:'Card is genuine and the ARQC verifies — but the balance is too low. Issuer returns 51, and the card closes out with an AAC.',
+    route:'CARD → POS → ACQUIRER → BKM → ISSUER',
+    active:['card','pos','acquirer','sw','issuer'],
+    steps:['tap','ppse','aid','gpo','read','oda_cda','cvm_online_pin','genac_arqc',
+           'iso0100_pin','route_bkm','bkm_to_issuer','issuer_decline','iso0110_decline','genac2_aac','declined']
+  },
+  pin_deepdive: {
+    name:'PIN deep-dive — DUKPT & PIN translation',
+    tag:'keys · HSM', color:'var(--secret)',
+    blurb:'Follow one PIN from keypad to verification: format-0 block, DUKPT one-time key, then PIN translation through every HSM zone — the clear PIN never leaving hardware.',
+    route:'PAD → POS → ACQUIRER-HSM → BKM-HSM → ISSUER-HSM',
+    active:['pos','acquirer','sw','issuer'],
+    steps:['pin_entry','pin_block','dukpt_derive','dukpt_encrypt','hsm_acq','hsm_sw','hsm_iss']
+  },
+  lowvalue_offline: {
+    name:'Low-value contactless — no CVM, offline',
+    tag:'offline · no PIN', color:'var(--clear)',
+    blurb:'A small tap under the CVM limit — transit, vending. No PIN at all; the chip approves offline and returns a TC for later batch upload.',
+    route:'CARD → POS  (no network)',
+    active:['card','pos'],
+    steps:['tap','ppse','aid','gpo','cvm_none','genac_tc','approved_offline','settle_offline']
+  },
+};
+
+/* ============================================================
+   GLOSSARY DATA
+============================================================ */
+const GLOSSARY = [
+  ['APDU','Application Protocol Data Unit — the command/response packets between terminal and chip. C-APDU is the command, R-APDU the reply.'],
+  ['PPSE','Proximity Payment System Environment — the directory ("2PAY.SYS.DDF01") a contactless card exposes so the terminal can discover its applications.'],
+  ['AID','Application Identifier — names a specific payment application, e.g. A0000000031010 for Visa.'],
+  ['PDOL','Processing Data Object List — the chip\u2019s request for terminal data (amount, currency, random number) it needs before processing.'],
+  ['GPO','GET PROCESSING OPTIONS — the command carrying PDOL data; the card replies with its capabilities (AIP) and file map (AFL).'],
+  ['AIP / AFL','Application Interchange Profile (what the card supports) and Application File Locator (which records to read).'],
+  ['CDOL','Card risk-management Data Object List — what the card wants for each GENERATE AC.'],
+  ['ATC','Application Transaction Counter — increments every transaction; folded into the session key so each cryptogram is unique.'],
+  ['ARQC','Authorization Request Cryptogram — 8-byte MAC the chip generates to request online authorization. Proves the card to the issuer.'],
+  ['ARPC','Authorization Response Cryptogram — the issuer\u2019s signed reply, which the card verifies in turn.'],
+  ['TC / AAC','Transaction Certificate (approved) and Application Authentication Cryptogram (declined) — the final cryptogram from the 2nd GENERATE AC.'],
+  ['CVM','Cardholder Verification Method — PIN, signature, or none, per the card\u2019s CVM list.'],
+  ['SDA/DDA/CDA','Offline Data Authentication methods — static, dynamic, and combined (signing the cryptogram), all using public-key certs.'],
+  ['DUKPT','Derived Unique Key Per Transaction — terminal-side scheme giving every transaction a fresh key, with forward security.'],
+  ['BDK','Base Derivation Key — the master key (acquirer HSM only) from which all a terminal\u2019s keys descend.'],
+  ['IPEK','Initial PIN Encryption Key — derived from the BDK and injected into a terminal at provisioning.'],
+  ['KSN','Key Serial Number — BDK id + device id + transaction counter; travels with the ciphertext so the HSM can re-derive the key.'],
+  ['PIN block','The PIN formatted (ISO 9564) and bound to the PAN before encryption, so it can\u2019t be replayed onto another card.'],
+  ['ZMK / ZPK','Zone Master Key and Zone PIN Key — used to re-encrypt PIN blocks between network hops during PIN translation.'],
+  ['HSM','Hardware Security Module — tamper-resistant hardware that verifies cryptograms, generates ARPCs, and translates PINs. Keys never leave it.'],
+  ['ISO 8583','The message format for card authorizations: an MTI, a bitmap, and numbered data elements (DEs).'],
+  ['MTI','Message Type Indicator — 4 digits: version, class, function, origin. 0100 = auth request; 0110 = auth response.'],
+  ['Bitmap','A 64- (or 128-) bit map where bit n set means data element n is present. The message\u2019s table of contents.'],
+  ['DE39','Response code data element. 00 approved, 51 insufficient funds, 05 do not honor, 55 wrong PIN, 91 issuer unavailable.'],
+  ['BKM','Bankalararası Kart Merkezi — Turkey\u2019s national interbank switch, routing and settling domestic card traffic between member banks.'],
+  ['Interchange','The fee the acquirer pays the issuer per transaction; set/operated domestically via BKM, internationally via the schemes.'],
+];
+
+/* ISO 8583 field metadata */
+const DE_META = {
+  2:['PAN','5413 3300 8902 0011','clear'],
+  3:['Processing code','000000','data'],
+  4:['Amount, transaction','000000010000','clear'],
+  7:['Transmission date/time','0610143025','data'],
+  11:['STAN','004417','data'],
+  12:['Time, local','143025','data'],
+  13:['Date, local','0610','data'],
+  14:['Expiration date','2812','clear'],
+  22:['POS entry mode','071  (contactless, online PIN)','data'],
+  24:['Function code','100  (auth request)','data'],
+  25:['POS condition code','00','data'],
+  38:['Authorization ID response','654321','data'],
+  39:['Response code','—','data'],
+  41:['Terminal ID','TRM00128','data'],
+  42:['Card acceptor ID','MERCH0007841234','data'],
+  49:['Currency code, txn','0978  (EUR)','clear'],
+  52:['PIN block','A7F3C0915E2B88D4','secret'],
+  55:['ICC data (EMV)','ARQC A1B2C3D4E5F60718 · ATC 005A · …','enc'],
+};
+const RC_TEXT = {'00':'Approved','51':'Insufficient funds','05':'Do not honor','55':'Incorrect PIN','91':'Issuer unavailable'};
+
+/* ============================================================
+   RENDER: TOPOLOGY (SVG)
+============================================================ */
+const NS='http://www.w3.org/2000/svg';
+const net = document.getElementById('net');
+let nodeEls={}, wireEls=[], packet=null, bypassWire=null;
+
+function el(tag,attrs){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);return e;}
+
+function buildTopology(){
+  net.innerHTML='';
+  nodeEls={}; wireEls=[];
+  // wires
+  WIRES.forEach(([a,b])=>{
+    const A=ACTORS[a],B=ACTORS[b];
+    const w=el('line',{x1:A.x+A.w/2,y1:A.y,x2:B.x-B.w/2,y2:B.y,stroke:'var(--line)','stroke-width':2});
+    net.appendChild(w); wireEls.push({a,b,el:w});
+  });
+  // bypass arc acquirer -> issuer (on-us)
+  const Aq=ACTORS.acquirer, Is=ACTORS.issuer;
+  bypassWire=el('path',{d:`M ${Aq.x} ${Aq.y-31} C ${Aq.x+120} ${10}, ${Is.x-120} ${10}, ${Is.x} ${Is.y-31}`,
+    fill:'none',stroke:'var(--line)','stroke-width':2,'stroke-dasharray':'5 5',opacity:0});
+  net.appendChild(bypassWire);
+  // HSM stems
+  [['acqhsm','acquirer'],['isshsm','issuer']].forEach(([h,p])=>{
+    const H=ACTORS[h],P=ACTORS[p];
+    net.appendChild(el('line',{x1:P.x,y1:P.y+31,x2:H.x,y2:H.y-12,stroke:'var(--line-soft)','stroke-width':1.5}));
+  });
+  // nodes
+  for(const id in ACTORS){
+    const a=ACTORS[id];
+    const g=el('g',{});
+    if(a.tiny){
+      const r=el('rect',{x:a.x-26,y:a.y-12,width:52,height:24,rx:6,fill:'var(--panel2)',stroke:'var(--line)','stroke-width':1.5,class:'node-box'});
+      const s=el('text',{x:a.x,y:a.y+4,'text-anchor':'middle',class:'node-sub'});s.textContent='HSM';
+      g.appendChild(r);g.appendChild(s);
+      nodeEls[id]={box:r};
+    } else {
+      const r=el('rect',{x:a.x-a.w/2,y:a.y-a.h/2,width:a.w,height:a.h,rx:10,fill:'var(--panel2)',stroke:'var(--line)','stroke-width':1.8,class:'node-box'});
+      const t=el('text',{x:a.x,y:a.y-2,'text-anchor':'middle',class:'node-label'});t.textContent=a.label;
+      const s=el('text',{x:a.x,y:a.y+14,'text-anchor':'middle',class:'node-sub'});s.textContent=a.sub;
+      g.appendChild(r);g.appendChild(t);g.appendChild(s);
+      nodeEls[id]={box:r,label:t,sub:s};
+    }
+    net.appendChild(g);
+  }
+  // packet
+  packet=el('circle',{r:7,fill:'var(--enc)',opacity:0,filter:''});
+  net.appendChild(packet);
+}
+
+function setActive(activeList){
+  for(const id in nodeEls){
+    const baseId = id==='acqhsm'?'acquirer':(id==='isshsm'?'issuer':id);
+    const on = activeList.includes(baseId) && (id!=='sw' || activeList.includes('sw'));
+    const isHsm = id==='acqhsm'||id==='isshsm';
+    const box=nodeEls[id].box;
+    box.setAttribute('opacity', on?1:0.28);
+    box.setAttribute('stroke', on?'var(--line)':'var(--line-soft)');
+  }
+  // switch dim if not active
+  const swOn=activeList.includes('sw');
+  nodeEls.sw.box.setAttribute('opacity', swOn?1:0.22);
+  if(nodeEls.sw.sub) nodeEls.sw.sub.setAttribute('opacity', swOn?1:0.4);
+  // wires
+  wireEls.forEach(w=>{
+    const on = activeList.includes(w.a)&&activeList.includes(w.b);
+    w.el.setAttribute('opacity', on?1:0.25);
+  });
+  // bypass arc on for on-us (acquirer+issuer active but not sw)
+  const bypass = activeList.includes('acquirer')&&activeList.includes('issuer')&&!swOn;
+  bypassWire.setAttribute('opacity', bypass?0.7:0);
+}
+
+function nodeXY(id){const a=ACTORS[id];return {x:a.x,y:a.y};}
+let animReq=null;
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function flashNode(id,color){
+  const n=nodeEls[id]; if(!n)return;
+  n.box.setAttribute('stroke',color); n.box.setAttribute('stroke-width','2.4');
+  setTimeout(()=>{ n.box.setAttribute('stroke','var(--line)'); n.box.setAttribute('stroke-width','1.8'); },650);
+}
+
+function animatePacket(step){
+  if(animReq) cancelAnimationFrame(animReq);
+  const color=TRUSTCOLOR[TRUST[step.trust]]||'var(--enc)';
+  packet.setAttribute('fill',color);
+  const path = step.path ? step.path.slice() : [step.from, step.to];
+  // internal step (from==to): pulse node only
+  if(path.length===2 && path[0]===path[1]){
+    packet.setAttribute('opacity',0);
+    flashNode(path[0],color);
+    return;
+  }
+  if(reduceMotion){
+    packet.setAttribute('opacity',0);
+    path.forEach(p=>flashNode(p,color));
+    return;
+  }
+  // build segments
+  const pts=path.map(nodeXY);
+  let seg=0, t=0;
+  const segDur=420;
+  let last=performance.now();
+  flashNode(path[0],color);
+  packet.setAttribute('opacity',1);
+  function frame(now){
+    const dt=now-last; last=now; t+=dt/segDur;
+    if(t>=1){ t=0; seg++; if(seg<pts.length-1){ flashNode(path[seg],color);} }
+    if(seg>=pts.length-1){
+      packet.setAttribute('cx',pts[pts.length-1].x);
+      packet.setAttribute('cy',pts[pts.length-1].y);
+      packet.setAttribute('opacity',0);
+      flashNode(path[path.length-1],color);
+      return;
+    }
+    const A=pts[seg],B=pts[seg+1];
+    const e = t<.5 ? 2*t*t : -1+(4-2*t)*t; // ease
+    packet.setAttribute('cx', A.x+(B.x-A.x)*e);
+    packet.setAttribute('cy', A.y+(B.y-A.y)*e);
+    animReq=requestAnimationFrame(frame);
+  }
+  animReq=requestAnimationFrame(frame);
+}
+
+/* ============================================================
+   RENDER: INSPECTOR
+============================================================ */
+const insp=document.getElementById('insp');
+const inspLayer=document.getElementById('inspLayer');
+
+function hexBlock(arr){
+  return '<div class="hex">'+arr.map(([b,c])=>`<span class="hx ${c}">${b}</span>`).join(' ')+'</div>';
+}
+function annot(rows){
+  return '<div class="annot">'+rows.map(r=>`<div class="row"><span class="by">${r.by}</span><span class="lb">${r.lb}</span></div>`).join('')+'</div>';
+}
+function kchain(steps){
+  let h='<div class="kchain">';
+  steps.forEach((s,i)=>{
+    const cls = s.cls==='ok'?'kv':(s.cls==='bad'?'kv':'kv '+(s.cls==='enc'?'enc':s.cls==='clear'?'clear':''));
+    let valColor='';
+    if(s.cls==='ok')valColor='style="color:var(--ok)"';
+    if(s.cls==='bad')valColor='style="color:var(--bad)"';
+    h+=`<div class="kstep"><div class="kt">${s.t}</div><div class="${cls}" ${valColor}>${s.v}</div>${s.op?`<div class="kop">${s.op}</div>`:''}</div>`;
+    if(s.op && i<steps.length-1) h+='<div class="karrow">↓</div>';
+  });
+  h+='</div>';
+  return h;
+}
+function buildBitmap(des){
+  const has2=des.some(d=>d>64);
+  const len=has2?128:64;
+  const bits=new Array(len).fill(0);
+  if(has2)bits[0]=1;
+  des.forEach(d=>{bits[d-1]=1;});
+  let hex='';
+  for(let i=0;i<len;i+=4){const nib=bits[i]*8+bits[i+1]*4+bits[i+2]*2+bits[i+3];hex+=nib.toString(16).toUpperCase();}
+  // grouped binary
+  let bin='';
+  for(let i=0;i<len;i++){bin+=`<span class="${bits[i]?'on':''}">${bits[i]}</span>`; if((i+1)%8===0)bin+=' ';}
+  return {hex,bin};
+}
+
+function renderInspector(step){
+  const L=LAYER[step.layer];
+  inspLayer.innerHTML=`<span style="color:${L.color}">● ${L.label}</span>`;
+  const fromA=ACTORS[step.from]?ACTORS[step.from].label:step.from;
+  const toA=ACTORS[step.to]?ACTORS[step.to].label:step.to;
+  const dir = step.from===step.to ? `<span>${fromA}</span><span class="arr">internal</span>`
+            : `<span>${fromA}</span><span class="arr">▶</span><span>${toA}</span>`;
+  const trustName={clear:'cleartext',enc:'encrypted',secret:'secret',plain:'physical'}[step.trust];
+  let h='';
+  h+=`<div class="crumb">${dir}</div>`;
+  h+=`<h3>${step.title}</h3>`;
+  h+=`<div class="badges">
+        <span class="badge"><i style="background:${L.color}"></i>${L.label}</span>
+        <span class="badge"><i style="background:${TRUSTCOLOR[TRUST[step.trust]]}"></i>${trustName}</span>
+      </div>`;
+  h+=`<div class="desc">${step.desc}</div>`;
+
+  const I=step.insp;
+  if(I.kind==='note'){
+    h+=`<div class="sub">Detail</div><div class="annot">`+
+       I.lines.map(l=>`<div class="row"><span class="by" style="color:var(--faint);font-size:11px">${l.t}</span><span class="lb">${l.v}</span></div>`).join('')+`</div>`;
+  }
+  if(I.kind==='apdu'){
+    h+=`<div class="sub">${I.c.label}</div>`+hexBlock(I.c.hex)+annot(I.c.rows);
+    h+=`<div class="sub">${I.r.label}</div>`+hexBlock(I.r.hex)+annot(I.r.rows);
+  }
+  if(I.kind==='keymath'){
+    h+=`<div class="sub">Key derivation</div>`+kchain(I.steps);
+    if(I.note)h+=`<div class="note"><b>Note.</b> ${I.note}</div>`;
+  }
+  if(I.kind==='genac'){
+    h+=`<div class="sub">${I.apdu.c.label}</div>`+hexBlock(I.apdu.c.hex)+annot(I.apdu.c.rows);
+    h+=`<div class="sub">${I.apdu.r.label}</div>`+hexBlock(I.apdu.r.hex)+annot(I.apdu.r.rows);
+    h+=`<div class="sub">Cryptogram derivation</div>`+kchain(I.steps);
+  }
+  if(I.kind==='iso'){
+    const bm=buildBitmap(I.de);
+    h+=`<div class="iso-mti">
+          <div class="m"><div class="k">MTI</div><div class="v">${I.mti}</div></div>
+          <div class="m"><div class="k">class</div><div class="v" style="font-size:13px">authorization</div></div>
+          <div class="m"><div class="k">function</div><div class="v" style="font-size:13px">${I.mtiNote[1]}</div></div>
+          <div class="m"><div class="k">origin</div><div class="v" style="font-size:13px">acquirer</div></div>
+        </div>`;
+    h+=`<div class="sub">Bitmap — table of contents</div>
+        <div class="bitmap"><div class="bhex">${bm.hex}</div>
+        <div class="bbin">${bm.bin}</div>
+        <div style="color:var(--faint);font-size:10.5px;margin-top:6px">each <span class="on">1</span> = that data element is present</div></div>`;
+    h+=`<div class="sub">Data elements</div>`;
+    I.de.forEach(d=>{
+      const m=DE_META[d]||['Field '+d,'—','data'];
+      let val=m[1], cls=m[2];
+      if(d===39){ val = I.rc+'  ('+(RC_TEXT[I.rc]||'?')+')'; cls = I.rc==='00'?'clear':'data'; }
+      if(d===55 && I.isResponse){ val='ARPC 7B44E2C0 · ARC '+(I.rc==='00'?'00':'51'); }
+      h+=`<div class="de"><span class="di">DE${d}</span><span class="dn">${m[0]}</span><span class="dv ${cls}">${val}</span></div>`;
+    });
+  }
+  if(I.kind==='verdict'){
+    h+=`<div class="verdict ${I.ok?'ok':'bad'}"><span style="font-size:24px">${I.ok?'✓':'✕'}</span><div><div class="big">${I.big}</div><div style="font-size:12px;color:var(--faint);margin-top:2px">${I.sub}</div></div></div>`;
+  }
+  insp.innerHTML=h;
+}
+
+/* ============================================================
+   STATE + DRIVER
+============================================================ */
+let curScn='contactless_ok', curStep=0, playing=false, timer=null, speed=1500;
+
+function steps(){ return SCENARIOS[curScn].steps.map(id=>STEP[id]); }
+
+function renderLedger(){
+  const sc=SCENARIOS[curScn], st=steps();
+  document.getElementById('ledgerCount').textContent=`${curStep+1} / ${st.length}`;
+  const led=document.getElementById('ledger');
+  led.innerHTML=st.map((s,i)=>{
+    const L=LAYER[s.layer];
+    const cls=i===curStep?'cur':(i<curStep?'done':'');
+    return `<div class="step ${cls}" data-i="${i}">
+      <div class="n">${String(i+1).padStart(2,'0')}</div>
+      <div><div class="t">${s.title}</div>
+      <div class="lay"><i style="background:${L.color}"></i>${L.label}</div></div></div>`;
+  }).join('');
+  led.querySelectorAll('.step').forEach(e=>e.addEventListener('click',()=>{stop();go(+e.dataset.i);}));
+  const cur=led.querySelector('.step.cur');
+  if(cur) cur.scrollIntoView({block:'nearest',behavior:reduceMotion?'auto':'smooth'});
+}
+
+function go(i){
+  const st=steps();
+  curStep=Math.max(0,Math.min(i,st.length-1));
+  const step=st[curStep];
+  setActive(SCENARIOS[curScn].active);
+  animatePacket(step);
+  renderInspector(step);
+  renderLedger();
+  updateBtns();
+}
+function updateBtns(){
+  const st=steps();
+  document.getElementById('btnPrev').disabled=curStep===0;
+  document.getElementById('btnFirst').disabled=curStep===0;
+  document.getElementById('btnNext').disabled=curStep===st.length-1;
+}
+function play(){
+  playing=true;
+  document.getElementById('playIcon').textContent='❚❚';
+  document.getElementById('playTxt').textContent='Pause';
+  schedule();
+}
+function schedule(){
+  clearTimeout(timer);
+  timer=setTimeout(()=>{
+    const st=steps();
+    if(curStep<st.length-1){ go(curStep+1); schedule(); }
+    else stop();
+  }, speed);
+}
+function stop(){
+  playing=false; clearTimeout(timer);
+  document.getElementById('playIcon').textContent='▶';
+  document.getElementById('playTxt').textContent='Play';
+}
+
+function loadScenario(id,reset=true){
+  curScn=id; if(reset)curStep=0;
+  document.getElementById('scnSelect').value=id;
+  go(curStep);
+}
+
+/* ---- build selector + scenario cards ---- */
+function buildSelector(){
+  const sel=document.getElementById('scnSelect');
+  sel.innerHTML=Object.entries(SCENARIOS).map(([k,v])=>`<option value="${k}">${v.name}</option>`).join('');
+  sel.addEventListener('change',()=>{stop();loadScenario(sel.value);});
+}
+function buildScnCards(){
+  const g=document.getElementById('scnGrid');
+  g.innerHTML=Object.entries(SCENARIOS).map(([k,v])=>`
+    <div class="scard" data-k="${k}">
+      <div class="stag"><i style="background:${v.color}"></i>${v.tag}</div>
+      <h3>${v.name}</h3>
+      <p>${v.blurb}</p>
+      <div class="route">${v.route}</div>
+      <div class="go">Open trace →</div>
+    </div>`).join('');
+  g.querySelectorAll('.scard').forEach(c=>c.addEventListener('click',()=>{
+    stop(); loadScenario(c.dataset.k); switchView('sim');
+  }));
+}
+function buildGlossary(){
+  document.getElementById('glossary').innerHTML=GLOSSARY.map(([k,d])=>
+    `<div class="term"><span class="k">${k}</span><span class="d">${d}</span></div>`).join('');
+}
+
+/* ---- tabs ---- */
+function switchView(v){
+  document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected', t.dataset.view===v));
+  document.querySelectorAll('.view').forEach(s=>s.classList.toggle('active', s.id==='view-'+v));
+}
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>switchView(t.dataset.view)));
+
+/* ---- controls ---- */
+document.getElementById('btnPlay').addEventListener('click',()=>{ playing?stop():play(); });
+document.getElementById('btnNext').addEventListener('click',()=>{stop();go(curStep+1);});
+document.getElementById('btnPrev').addEventListener('click',()=>{stop();go(curStep-1);});
+document.getElementById('btnFirst').addEventListener('click',()=>{stop();go(0);});
+document.getElementById('speed').addEventListener('input',e=>{ speed=3200-(+e.target.value); if(playing)schedule(); });
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='SELECT'||e.target.tagName==='INPUT')return;
+  if(e.key==='ArrowRight'){stop();go(curStep+1);}
+  if(e.key==='ArrowLeft'){stop();go(curStep-1);}
+  if(e.key===' '){e.preventDefault();playing?stop():play();}
+});
+
+/* ---- init ---- */
+buildTopology();
+buildSelector();
+buildScnCards();
+buildGlossary();
+loadScenario('contactless_ok');
+</script>
+</body>
+</html>

@@ -1,12 +1,16 @@
 <div align="center">
 
-# 💳 ISO8583 Simulator
+# 💳 ISO8583 Tools
 
-Interactive ISO 8583 Message Builder, Parser, and Validator designed for payment engineers, fintech developers, QA teams, and students learning card transaction processing.
+Interactive, browser-based utilities for building, parsing, and tracing payment messages — useful for payment engineers, fintech developers, QA teams, and students.
 
 <p align="center">
   <a href="https://mfaruk-sys.github.io/ISO8583/iso8583-simulator.html">
     <img src="https://img.shields.io/badge/🚀%20Live%20Demo-Open%20Simulator-blue?style=for-the-badge">
+  </a>
+  &nbsp;
+  <a href="https://mfaruk-sys.github.io/ISO8583/emv-payment-trace.html">
+    <img src="https://img.shields.io/badge/🔍%20EMV%20Trace-Open%20Viewer-green?style=for-the-badge">
   </a>
 </p>
 
@@ -14,43 +18,34 @@ Interactive ISO 8583 Message Builder, Parser, and Validator designed for payment
 
 ---
 
-## 🌐 Live Demo
+## 🌐 Live Demos
 
-👉 **Try it now**
+- **ISO 8583 Simulator:** https://mfaruk-sys.github.io/ISO8583/iso8583-simulator.html
+- **EMV Payment Trace Viewer:** https://mfaruk-sys.github.io/ISO8583/emv-payment-trace.html
 
-**https://mfaruk-sys.github.io/ISO8583/iso8583-simulator.html**
-
-This simulator allows you to create, inspect, validate, and understand ISO 8583 financial messages directly in your browser.
+Open either demo in your browser — both are static, client-side tools hosted on GitHub Pages.
 
 ---
 
-## ✨ Features
+## ✨ What these tools do
 
-### 🏗 Message Builder
-- Build ISO 8583 messages interactively
-- Automatic bitmap generation
-- Support for common transaction types
-- Real-time field validation
+- **ISO 8583 Simulator** — Build, parse, validate, and inspect ISO 8583 messages with visual bitmap analysis and field-level decoding.
+- **EMV Payment Trace Viewer** — Load EMV payment traces (APDUs, TLV data, and EMV tag decoding) to visualize card-issuer interactions and inspect EMV data elements for troubleshooting and learning.
 
-### 🔍 Message Parser
-- Decode raw ISO 8583 messages
-- Visual bitmap analysis
-- Field-by-field breakdown
-- Human-readable output
+---
 
-### 📊 Bitmap Visualization
-- Primary bitmap inspection
-- Secondary bitmap support
-- Active field highlighting
+## 🔧 Key Features
 
-### 🧪 Testing & Learning
-- Great for QA testing
-- Payment switch integration debugging
-- Banking and fintech training
-- ISO 8583 protocol education
+- **Interactive Builder & Parser:** Construct messages and decode raw dumps in real time.
+- **EMV TLV Decoding:** Human-readable breakdown of EMV tags and values.
+- **Bitmap & Field Visualization:** See which ISO fields are set and view parsed values.
+- **Browser-Only:** No server or install required — works from GitHub Pages.
 
-### ⚡ Browser-Based
-- No installation required
-- No backend dependency
-- Works directly from GitHub Pages
-- Fast and lightweight
+---
+
+## 📁 Included Files
+
+- [iso8583-simulator.html](iso8583-simulator.html) — ISO 8583 interactive simulator
+- [emv-payment-trace.html](emv-payment-trace.html) — EMV payment trace viewer and decoder
+
+---
